@@ -49,7 +49,7 @@ class AtomicScala(val global: Global) extends Plugin {
   val description = "Atomic sets for Scala"
   val components = List[PluginComponent](CheckAnnotationTargets,
     ClassSetsMapping,
-    AddLockFields, AddSync, PoorMan)
+    AddLockFields, AddSync)
 
   type GlobalType = this.global.type
 
@@ -62,8 +62,13 @@ class AtomicScala(val global: Global) extends Plugin {
   /**
    * base name for lock fields
    */
-
   val as_lock = "__as_lock"
+    
+  /**
+   * Class of the lock object to be used
+   */
+  val lockClass ="ch.usi.inf.l3.as.plugin.OrderedLock"
+  
 
   /******************************* Utilities ************************************/
 
@@ -324,150 +329,105 @@ class AtomicScala(val global: Global) extends Plugin {
 
       println("Add lock fields is running...")
 
+      /**
+       * List of constructors of the passed class
+       */
       def getConstructors(klass: ClassDef) =
         klass.impl.body.
           filter(_.symbol.name == nme.CONSTRUCTOR).map(_.asInstanceOf[DefDef])
 
-      def modifyConstructors(klass: ClassDef) = {
-        println("old impl: ")
-        klass.impl.body.foreach(println)
-        val cnsts = getConstructors(klass)
-        val clock_sym = rootMirror.getClassByName(
-                newTypeName("ch.usi.inf.l3.as.plugin.OrderedLock"))
-//              val clock_module = definitions.ObjectTpe //rootMirror.getModuleByName(
-//                newTermName("ch.usi.inf.l3.as.plugin.OrderedLock"))
-        val newCnsts = cnsts.map {
+      
+      /**
+       * Get the symbol of the object to be used as a lock object.
+       */
+      def getLockSym(name: String) = {
+        rootMirror.getClassByName(
+          newTypeName(name))
+      }
+
+      /**
+       * Given a list of constructors, it adds a new parameter of lock type
+       * to each constructor and returns a list of new constructors
+       */
+      def getNewConstructors(old_construcors: List[DefDef], lockType: Type) = {
+        old_construcors.map {
           (mthd: DefDef) =>
             {
-
-              
-
-              val lock_type = clock_sym.tpe
-              val lock_sym = mthd.symbol.newSyntheticValueParam(lock_type,  as_lock)
-//              val lock_sym = lock_sym_list.head
-              lock_sym.setFlag(PARAM | PARAMACCESSOR)
-              val rhs = reify{ch.usi.inf.l3.as.plugin.OrderedLock.apply}.tree
-
-              println("RHS LOCK: " + rhs)
-
-              rhs.tpe = lock_type
-              val lockTree = ValDef(lock_sym, rhs)
-              lockTree.tpe = lock_sym.info
-              lockTree.tpt.tpe = lock_sym.info
-
-              //TODO remove later
-              localTyper.typed(lockTree)
-
-              //TODO fix this flatten issue later
+              val lock_sym =
+                mthd.symbol.newSyntheticValueParam(lockType, as_lock)
+              //TODO this does not seem to have any effect
+              val rhs = reify { ch.usi.inf.l3.as.plugin.OrderedLock.apply }.
+                tree.setType(lockType)
+              val lockTree = ValDef(lock_sym, rhs).setType(lock_sym.info)
               val newparamss = mthd.vparamss ++ List(List(lockTree))
 
-              /*Symbol work starts here*/
-              val encClassSym = klass.symbol
+              val methDef = treeCopy.DefDef(
+                mthd, mthd.mods, mthd.name,
+                mthd.tparams,
+                newparamss, mthd.tpt, mthd.rhs)
 
-//              encClassSym.info.decls.unlink(mthd.symbol)
-//              val newClassInfo = encClassSym.info.remove(mthd.symbol)
-                
-//              val newMethodSym = encClassSym.newClassConstructor(encClassSym.pos.focus)
-
-              
-//              val paramSyms = map2(newparamss.map(_.symbol.tpe), newparamss.map(_.symbol)) {
-//                (tp, param) => { 
-//                  val s = newMethodSym.newSyntheticValueParam(tp, param.name)
-//                  s.flags = param.flags
-//                  s
-//                }
-//              }
-
-              //TODO this is a trouble suspect
-              val newMethodTpe = MethodType(newparamss.flatten.map(_.symbol), encClassSym.tpe)
-              println("MTYPE: " + newMethodTpe)
-
-//              val newMethodparams = for ((p, s) <- newparamss zip paramSyms) yield {
-////                val temp = p.setSymbol(s)
-////                temp.setType(s.info)
-//                s.setInfo(p.symbol.tpe)
-//                ValDef(s, p.rhs)
-//              }
-
-              
-              println("NEW PARAMS W SYMS")
-              //              newMethodparams.foreach(println)
-
-              //if (encClassSym.info.decls.lookup(newMethodSym.name) == NoSymbol) {
-                
-                mthd.symbol updateInfo newMethodTpe
-                
-                
-//              } else {
-//                newMethodSym setInfo newMethodTpe
-//              }
-
-              val mthdBody = mthd.rhs
-
-//              changeOwner(mthdBody, mthd.symbol, paramSyms)
-
-//              changeOwner(mthdBody, mthd.symbol, newMethodSym)
-
-              val tbody = mthdBody //localTyper.typedPos(newMethodSym.pos)(mthdBody)
-
-              
-//              newMethodSym.setTypeSignature(newMethodTpe)
-
-              val methDef = treeCopy.DefDef(mthd, mthd.mods, mthd.name, mthd.tparams,
-            		  newparamss, mthd.tpt, mthd.rhs)
-            		  //DefDef(newMethodSym, List(newMethodparams), tbody)
-              
-//              methDef.tpe = newMethodTpe
-//              methDef.tpe = mthdBody.tpe
-
-              //              newMethodSym.setInfoAndEnter(newMethodTpe)
-
-//              methDef.tpt setType localTyper.packedType(tbody, newMethodSym)
-
-              println(methDef)
-              //              val newConstDef = treeCopy.DefDef(mthd, mthd.mods, mthd.name,
-              //                mthd.tparams, List(newMethodparams), mthd.tpt, mthd.rhs)
-              //                
-              //              println("FINAL RESULT: " + newConstDef)
-              //              localTyper.typed(newConstDef)
               localTyper.typed(methDef)
+              //TODO I am not 100% sure that this is not needed
+              //              val newMethodTpe = 
+              //                MethodType(newparamss.flatten.map(_.symbol), encClassSym.tpe)
+              //
+              //                mthd.symbol updateInfo newMethodTpe
+              // IMPORTANT: To make sure the parameter is added properly, it is 
+              // very important to add the last two flags:
+              // (DEFAULTPARAM | DEFAULTINIT)
+              // If no flags are set altogether, no need to worry in the first 
+              // place.
+              //              lock_sym.setFlag(PARAM | PARAMACCESSOR | DEFAULTPARAM | DEFAULTINIT)
+
             }
         }
-
-        val allButCnst = klass.impl.body.
-          filter(_.symbol.name != nme.CONSTRUCTOR)
-
+      }
+      
+      	/**
+         * Given a class def, returns a new class containing a lock field 
+         */
+        def withLockField(klass: ClassDef) = {
+          val sym = 
+            klass.symbol.newValue(
+                newTermName(as_lock ), klass.symbol.pos.focus).
+                setFlag(PARAMACCESSOR).
+                setInfoAndEnter(getLockSym(lockClass).tpe)
+          val newVal = ValDef(sym, EmptyTree).setType(sym.info)
+          //TODO should this be deep-copied?
+          changeClassImpl(klass, newVal :: klass.impl.body)
+        }
         
-        val as_lck_s = klass.symbol.newValue(newTermName(as_lock + " "), klass.symbol.pos.focus)
-        as_lck_s.flags = PARAMACCESSOR
-        as_lck_s.setInfoAndEnter(clock_sym.tpe)
-        val as_lck_tree = ValDef(as_lck_s, EmptyTree)
-        as_lck_tree.tpe = as_lck_s.info
-              
-        val newImpl =
+        /**
+         * Given a class and a new tree, returns a copy of the class with 
+         * the argument tree added to its implementation
+         */
+        def changeClassImpl(klass: ClassDef, tList: List[Tree]) = {
           treeCopy.ClassDef(klass, klass.mods,
             klass.symbol.name, klass.tparams,
             treeCopy.Template(klass.impl,
               klass.impl.parents,
               klass.impl.self,
-              (as_lck_tree :: newCnsts) ++ allButCnst))
+              tList))
+        }
 
-                      println(newImpl.symbol.rawInfo + " HERE IS THE SYM")
-
+      def modifyConstructors(klass: ClassDef) = {
+        val constructors = getConstructors(klass)
+        val newCnsts = getNewConstructors(constructors, getLockSym(lockClass).tpe)
+        val allButCnst = klass.impl.body.
+          filter(_.symbol.name != nme.CONSTRUCTOR)
+        val classWLockField = withLockField(klass)
+       
+        val newImpl = changeClassImpl(
+            classWLockField, newCnsts ++ classWLockField.impl.body)
         localTyper.typed(newImpl)
       }
 
-      def modifyNewStmts(newStmt: Apply, args: List[Tree]) = {
-        // create a new lock argument
-        val newArg = reify { ch.usi.inf.l3.as.plugin.OrderedLock(); }
-        //        newArg.tree.symbol.info = rootMirror.getClassByName(newTypeName("ch.usi.inf.l3.as.plugin.OrderedLock")).info
-        //        newArg.tree.tpe = rootMirror.getClassByName(newTypeName("ch.usi.inf.l3.as.plugin.OrderedLock")).info
-        // append it to the argument list
-        val newArgList = args ++ List(newArg.tree)
-
-        val apply = treeCopy.Apply(newStmt, newStmt.fun, newArgList)
-        apply.tpe = newStmt.tpe
-        //        println(apply + "  HERE HERE HERE ")
+      /**
+       * For each invocation of a modified constructor, add the needed parameter
+       */
+      def modifyNewStmtArgs(newStmt: Apply, args: List[Tree]) = {
+        val apply = treeCopy.Apply(newStmt, newStmt.fun, args).
+          setType(newStmt.tpe)
         localTyper.typed(apply)
       }
 
@@ -480,49 +440,21 @@ class AtomicScala(val global: Global) extends Plugin {
             // set. Should be easy to fix later.
             if (!klass.symbol.isModule && classSetsMap.contains(klass.symbol)) {
               val newClass = modifyConstructors(klass)
-              
-              println(newClass + ":LKA:")
-              //              println("new impl " + newClass)
               super.transform(newClass)
               //newClass
             } else super.transform(tree)
 
           case newStmt @ Apply(Select(New(tpt), nme.CONSTRUCTOR), args) =>
             if (classSetsMap.contains(tpt.symbol)) {
-              //              println("modified to " + modifyNewStmts(newStmt, args))
-              super.transform(modifyNewStmts(newStmt, args))
-            } else super.transform(tree)
+              val newArg = reify { ch.usi.inf.l3.as.plugin.OrderedLock(); }
+              super.transform(
+                  modifyNewStmtArgs(newStmt, args ++ List(newArg.tree)))
+            } 
+            else super.transform(tree)
 
           case _ => super.transform(tree)
         }
       }
-    }
-  }
-  
-  
-  private object PoorMan extends PluginComponent
-    with Transform
-    with TypingTransformers
-    with TreeDSL {
-
-    val global: GlobalType = AtomicScala.this.global
-
-    val runsAfter = List[String]("jvm");
-    override val runsRightAfter = Some("jvm")
-    val phaseName = "qsayqor"
-
-    def newTransformer(unit: CompilationUnit) = new AddSyncTransformer(unit)
-
-    class AddSyncTransformer(unit: CompilationUnit)
-      extends TypingTransformer(unit) {
-      
-      println("It is not done yet, poor men have to work as always...")
-
-      override def transform(tree: Tree): Tree = {
-        println(tree)
-        super.transform(tree)
-      }
-      
     }
   }
 

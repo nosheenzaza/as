@@ -42,7 +42,7 @@ import ch.usi.inf.l3.as.plugin.OrderedLock
 //  val lock = OrderedLock()
 //}
 
-class MyList {
+class MyList(val b: Int = 10) {
   @atomic('a) var list_f1 = "f1 list"
 }
 
