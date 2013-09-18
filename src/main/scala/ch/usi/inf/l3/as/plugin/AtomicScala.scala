@@ -362,7 +362,8 @@ class AtomicScala(val global: Global) extends Plugin {
                 pList, old_construcor.tpt, old_construcor.rhs)
              methDef.symbol.owner.info.decls.unlink(methDef.symbol)
               val methodInfo = methDef.symbol.info.asInstanceOf[MethodType]
-              methDef.symbol.updateInfo(MethodType(lock_sym :: methodInfo.params, methodInfo.resultType))
+              methDef.symbol.updateInfo(MethodType(
+                  lock_sym :: methodInfo.params, methodInfo.resultType))
               
               // The field was not linked properly until this was added
               // this was inspired from:
