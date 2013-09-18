@@ -13,3 +13,5 @@ cd "/Users/nosheen/Google Drive/EclipseProjects/as/bin"
 -Xplugin:"/Users/nosheen/Google Drive/EclipseProjects/as/target/\
 scala-2.10/as_2.10-1.0.jar"  \
 "/Users/nosheen/Google Drive/EclipseProjects/as/src/main/scala/Main.scala"
+
+#-Yshow-syms \
