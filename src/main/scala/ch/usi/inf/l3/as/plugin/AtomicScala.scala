@@ -55,7 +55,7 @@ class AtomicScala(val global: Global) extends Plugin {
 
   /**
    * TODO later for optimizations, I will need to relate sets to fields and not
-   * only as class.
+   * only to classes.
    */
   val classSetsMap = Map[Symbol, List[String]]()
 
@@ -79,10 +79,9 @@ class AtomicScala(val global: Global) extends Plugin {
    */
   def hasSymbol(t: Tree) = t.symbol != null && t.symbol != NoSymbol
 
-  private def findSymbol(name: Name, tpe: Type,
-    paramSyms: List[Symbol]): Option[Symbol] = {
-
-    val r = for (p <- paramSyms if (p.name == name && p.tpe =:= tpe)) yield { p }
+  private def findSymbol(name: Name, tpe: Type, paramSyms: List[Symbol]) = {
+    val r = paramSyms.foldLeft(List[Symbol]())((c,r) =>
+      if (r.name == name && r.tpe =:= tpe) r::c else c)
 
     r match {
       case head :: Nil => Some(head)
@@ -94,11 +93,8 @@ class AtomicScala(val global: Global) extends Plugin {
    * When creating a new tree by duplicating and modifying an existing one,
    * all symbols of child trees should be updated.
    */
-  private def changeOwner(tree: Tree, oldOwner: Symbol,
-    newOwner: Symbol): Unit = {
-
+  private def changeOwner(tree: Tree, oldOwner: Symbol, newOwner: Symbol) {
     var list: Map[Symbol, Symbol] = Map.empty
-
     tree.foreach {
       (x: Tree) =>
         {
@@ -143,7 +139,7 @@ class AtomicScala(val global: Global) extends Plugin {
     }
   }
 
-  /******************* Phase 1: check annotation targets ************************/
+/******************* Phase 1: check annotation targets ************************/
 
   /**
    * Check that each annotation is on the right target
@@ -174,7 +170,7 @@ class AtomicScala(val global: Global) extends Plugin {
     }
   }
 
-  /****************** Phase 2: create class-set map *****************************/
+/****************** Phase 2: create class-set map *****************************/
   /**
    * Find which classes have atomic sets, the next phase will add lock fields
    * based on this information.
@@ -190,6 +186,7 @@ class AtomicScala(val global: Global) extends Plugin {
     def newPhase(_prev: Phase) = new ClassSetsPhase(_prev)
 
     class ClassSetsPhase(prev: Phase) extends StdPhase(prev) {
+      
       println("Class to sets mapping phase is runnig...")
 
       override def name = ClassSetsMapping.this.phaseName
@@ -335,45 +332,48 @@ class AtomicScala(val global: Global) extends Plugin {
       /**
        * Get the symbol of the object to be used as a lock object.
        */
-      def getLockSym(name: String) = {
-        rootMirror.getClassByName(
-          newTypeName(name))
-      }    
+      def getLockSym(name: String) = 
+        rootMirror.getClassByName(newTypeName(name))
 
       /**
        * Given a list of constructors, it adds a new parameter of lock type
        * to each constructor and returns a list of new constructors
        */
       def getNewConstructor(old_construcor: DefDef, lockType: Type) = {
-    	  	// Notice how we ask the class Symbol to generate the new param 
-    	  	// symbol, NOT the method symbol!
-              val lock_sym =
-                old_construcor.symbol.owner.newValueParameter(
-                    newTermName(as_lock), old_construcor.symbol.pos.focus).setInfo(lockType).
-                    setFlag(PARAM | PARAMACCESSOR | SYNTHETIC)
-                    
-              val param = ValDef(lock_sym).setType(lockType)
-              val newparamss = param :: old_construcor.vparamss.head
-              val pList = newparamss :: old_construcor.vparamss.drop(1)
+        // Notice how we ask the class Symbol to generate the new param 
+        // symbol, NOT the method symbol!
+        val lock_sym =
+          old_construcor.symbol.owner.newValueParameter(
+            newTermName(as_lock), old_construcor.symbol.pos.focus)
+            .setInfo(lockType)
+            .setFlag(PARAM | PARAMACCESSOR | SYNTHETIC)
 
-              val methDef = treeCopy.DefDef(
-                old_construcor, old_construcor.mods, old_construcor.name,
-                old_construcor.tparams,
-                pList, old_construcor.tpt, old_construcor.rhs)
-             methDef.symbol.owner.info.decls.unlink(methDef.symbol)
-              val methodInfo = methDef.symbol.info.asInstanceOf[MethodType]
-              methDef.symbol.updateInfo(MethodType(
-                  lock_sym :: methodInfo.params, methodInfo.resultType))
-              
-              // The field was not linked properly until this was added
-              // this was inspired from:
-              // Typers.scala line 1529
-              localTyper.namer.enterValueParams(List(List(param)) map (_.map(_.duplicate)))
-              
-              methDef.symbol.owner.info.decls.enter(lock_sym)
-              methDef.symbol.owner.info.decls.enter(methDef.symbol)
-              
-              methDef
+        val param = ValDef(lock_sym).setType(lockType)
+        val newparamss = param :: old_construcor.vparamss.head
+        val pList = newparamss :: old_construcor.vparamss.drop(1)
+
+        val methDef = treeCopy.DefDef(
+          old_construcor, old_construcor.mods, old_construcor.name,
+          old_construcor.tparams,
+          pList, old_construcor.tpt, old_construcor.rhs)
+
+        methDef.symbol.owner.info.decls.unlink(methDef.symbol)
+
+        val methodInfo = methDef.symbol.info.asInstanceOf[MethodType]
+        
+        methDef.symbol.updateInfo(MethodType(
+          lock_sym :: methodInfo.params, methodInfo.resultType))
+
+        // The field was not linked properly until this was added
+        // this was inspired from:
+        // Typers.scala line 1529
+        localTyper.namer.enterValueParams(
+            List(List(param)) map (_.map(_.duplicate)))
+
+        methDef.symbol.owner.info.decls.enter(lock_sym)
+        methDef.symbol.owner.info.decls.enter(methDef.symbol)
+
+        methDef
       }
 
       /**
@@ -388,20 +388,22 @@ class AtomicScala(val global: Global) extends Plugin {
       override def transform(tree: Tree): Tree = {
 
         tree match {
-          case constructor: DefDef if(hasSymbol(constructor) && constructor.symbol.isConstructor) =>
-            if (!constructor.symbol.owner.isModule && classSetsMap.contains(constructor.symbol.owner)) {
-              val newC = getNewConstructor(constructor, getLockSym(lockClass).tpe)
+          case constructor: DefDef 
+          if(hasSymbol(constructor) &&
+             constructor.symbol.isConstructor &&
+             !constructor.symbol.owner.isModule &&
+             classSetsMap.contains(constructor.symbol.owner)) =>
+               
+              val newC = 
+                getNewConstructor(constructor, getLockSym(lockClass).tpe)
               super.transform(newC)
-              //newClass
-            } else super.transform(tree)
 
-          case newStmt @ Apply(Select(New(tpt), nme.CONSTRUCTOR), args) =>
-            if (classSetsMap.contains(tpt.symbol)) {
-              val newArg = reify { ch.usi.inf.l3.as.plugin.OrderedLock(); }
+          case newStmt @ Apply(Select(New(tpt), nme.CONSTRUCTOR), args) 
+          if (classSetsMap.contains(tpt.symbol))=>
+              val newArg = 
+                reify { ch.usi.inf.l3.as.plugin.OrderedLock(); }
               super.transform(
                   modifyNewStmtArgs(newStmt, newArg.tree :: args ))
-            } 
-            else super.transform(tree)
 
           case _ => super.transform(tree)
         }
@@ -512,28 +514,21 @@ class AtomicScala(val global: Global) extends Plugin {
        */
       def addSyncBLock(mt: DefDef) = {
         val mthdEncClass = mt.symbol.owner
-        // TODO make sure this works
         val anyRefSym = rootMirror.getClass(newTypeName("scala.AnyRef"))
-        val syncSym = anyRefSym.filter(_.name == newTermName("synchronized"))
+       
         val synchBlock =
           Apply(
             TypeApply(
-              Select(Select(This(mthdEncClass), newTermName("__as_lock")),
+              Select(Select(This(mthdEncClass), newTermName(as_lock)),
                 newTermName("synchronized")),
-              List(mt.tpt.duplicate)), // maybe here duplication is needed
-            List(mt.rhs.duplicate))//.setSymbol(syncSym) // think this duplication is needed
-       
-//        synchBlock.tpe = syncSym.tpe
-        println("NEW SYNCH" + synchBlock)
+              List(mt.tpt.duplicate)), 
+            List(mt.rhs.duplicate))
         synchBlock
       }
       
       override def transform(tree: Tree): Tree = {
         tree match {
           case cl: ClassDef =>
-            println("SYMBOL NAMES")
-            cl.impl.foreach(x => if(hasSymbol(x)) println(x.symbol.name + " the stuff is: " + x))
-            
             val newClass = localTyper.typed {
               treeCopy.ClassDef(cl, cl.mods,
                 cl.symbol.name, cl.tparams,
@@ -542,26 +537,25 @@ class AtomicScala(val global: Global) extends Plugin {
                   cl.impl.self,
                   cl.impl.body.foldLeft(cl.impl.body)((c, r) =>
                     methodTransform(r) match {
-                      case nm @ Some(_) => println ("HERE ADDING: ") ; nm.get :: c
+                      case nm @ Some(_) =>  nm.get :: c
                       case None => c
                     })))
             }.asInstanceOf[ClassDef]
-            println("NEW CLASS: " + newClass)
             super.transform(newClass)
           case _ => super.transform(tree)
         }
       }
 
       def methodTransform(tree: Tree) = {
+        //TODO think what other kinds of methods need not be synched
         tree match {
           case md: DefDef if hasSymbol(md) &&
             md.symbol.isMethod &&
             !md.symbol.isConstructor &&
             md.mods.isPublic &&
             classSetsMap.contains(md.symbol.owner) &&
-            md.symbol.name.toString() == "doSomething" =>
-//            println("RAW METHOD: ")
-//            println(showRaw(md))
+            !md.symbol.isSynthetic &&
+            !md.symbol.isGetter=>
             Some(getMethodWithNewBody(
               md, addSyncBLock(md), md.name + "__w_lock"))
           case _ => None

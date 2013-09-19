@@ -46,7 +46,7 @@ class MyList(val b: Int, val lck: OrderedLock) {
   @atomic('a) var list_f1 = "f1 list"
 
   def doSomething(a: Int) = {
-      val b = 10
+      val b = 10 + a
       b + a
   }
 }
