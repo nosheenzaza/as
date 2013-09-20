@@ -32,6 +32,8 @@
 [0m[[0mdebug[0m] [0m	  /Users/nosheen/Google Drive/EclipseProjects/as/target/scala-2.10/classes/ch/usi/inf/l3/as[0m
 [0m[[0mdebug[0m] [0m	ch/usi/inf/l3/as/plugin/AtomicScala$AddSync$AddSyncTransformer$$anonfun$5.class[0m
 [0m[[0mdebug[0m] [0m	  /Users/nosheen/Google Drive/EclipseProjects/as/target/scala-2.10/classes/ch/usi/inf/l3/as/plugin/AtomicScala$AddSync$AddSyncTransformer$$anonfun$5.class[0m
+[0m[[0mdebug[0m] [0m	Main$.class[0m
+[0m[[0mdebug[0m] [0m	  /Users/nosheen/Google Drive/EclipseProjects/as/target/scala-2.10/classes/Main$.class[0m
 [0m[[0mdebug[0m] [0m	ch/usi/inf/l3/as/plugin/AtomicScala$CheckAnnotationTargets$.class[0m
 [0m[[0mdebug[0m] [0m	  /Users/nosheen/Google Drive/EclipseProjects/as/target/scala-2.10/classes/ch/usi/inf/l3/as/plugin/AtomicScala$CheckAnnotationTargets$.class[0m
 [0m[[0mdebug[0m] [0m	ch/usi/inf/l3/as/plugin/AtomicScala$AddLockFields$AddLocksTransformer.class[0m
@@ -86,6 +88,8 @@
 [0m[[0mdebug[0m] [0m	  /Users/nosheen/Google Drive/EclipseProjects/as/target/scala-2.10/classes/ch/usi/inf/l3/as/plugin/AtomicScala$AddSync$.class[0m
 [0m[[0mdebug[0m] [0m	ch/usi/inf/l3/as/plugin/AtomicScala$AddSync$AddSyncTransformer$$anonfun$4.class[0m
 [0m[[0mdebug[0m] [0m	  /Users/nosheen/Google Drive/EclipseProjects/as/target/scala-2.10/classes/ch/usi/inf/l3/as/plugin/AtomicScala$AddSync$AddSyncTransformer$$anonfun$4.class[0m
+[0m[[0mdebug[0m] [0m	Main.class[0m
+[0m[[0mdebug[0m] [0m	  /Users/nosheen/Google Drive/EclipseProjects/as/target/scala-2.10/classes/Main.class[0m
 [0m[[0mdebug[0m] [0m	ch/usi/inf/l3/ascala/package$.class[0m
 [0m[[0mdebug[0m] [0m	  /Users/nosheen/Google Drive/EclipseProjects/as/target/scala-2.10/classes/ch/usi/inf/l3/ascala/package$.class[0m
 [0m[[0mdebug[0m] [0m	ch/usi/inf/l3/as/plugin/OrderedLock$.class[0m

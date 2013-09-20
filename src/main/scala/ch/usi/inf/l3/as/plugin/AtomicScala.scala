@@ -380,13 +380,11 @@ class AtomicScala(val global: Global) extends Plugin {
        * For each invocation of a modified constructor, add the needed parameter
        */
       def modifyNewStmtArgs(newStmt: Apply, args: List[Tree]) = {
-        val apply = treeCopy.Apply(newStmt, newStmt.fun, args).
-          setType(newStmt.tpe)
+        val apply = treeCopy.Apply(newStmt, newStmt.fun, args)
         localTyper.typed(apply)
       }
 
       override def transform(tree: Tree): Tree = {
-
         tree match {
           case constructor: DefDef 
           if(hasSymbol(constructor) &&
@@ -401,9 +399,11 @@ class AtomicScala(val global: Global) extends Plugin {
           case newStmt @ Apply(Select(New(tpt), nme.CONSTRUCTOR), args) 
           if (classSetsMap.contains(tpt.symbol))=>
               val newArg = 
-                reify { ch.usi.inf.l3.as.plugin.OrderedLock(); }
-              super.transform(
-                  modifyNewStmtArgs(newStmt, newArg.tree :: args ))
+                reify { ch.usi.inf.l3.as.plugin.OrderedLock(); }.tree
+              val newArgs = newArg :: args 
+              val newStmtM = 
+                localTyper.typed(Apply(Select(New(tpt), nme.CONSTRUCTOR), newArgs))
+              super.transform(newStmtM)
 
           case _ => super.transform(tree)
         }

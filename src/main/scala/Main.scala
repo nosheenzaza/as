@@ -1,5 +1,5 @@
 import ch.usi.inf.l3.ascala._
-import ch.usi.inf.l3.as.plugin.OrderedLock
+import ch.usi.inf.l3.as.plugin._
 
 //object Main extends App {
 
@@ -42,12 +42,17 @@ import ch.usi.inf.l3.as.plugin.OrderedLock
 //  val lock = OrderedLock()
 //}
 
+object Main extends App {
+  
+}
 class MyList(val b: Int, val lck: OrderedLock) {
   @atomic('a) var list_f1 = "f1 list"
 
   def doSomething(a: Int) = {
       val b = 10 + a
       b + a
+      
+      val mList = new MyList(10, OrderedLock())
   }
 }
 
