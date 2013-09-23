@@ -70,8 +70,61 @@ class AtomicScala(val global: Global) extends Plugin {
   val lockClass ="ch.usi.inf.l3.as.plugin.OrderedLock"
   
 
-  /******************************* Utilities ************************************/
+/******************************* Utilities ************************************/
 
+  /**
+       * pre: the tree has an owner.
+       */
+      def ownerIsClass(t: Tree) = t.symbol.owner.isClass
+
+      def annotationList(t: Tree) =
+        if (hasSymbol(t)) Some(t.symbol.annotations) else None
+
+      def atomicAnnotation(annList: List[AnnotationInfo]) = {
+        /* Need to change to ch.usi.inf.l3.ascala.Atomic if I want to use
+         * java annotations 
+         */
+        val atomicSymbol =
+          rootMirror.getClass(newTypeName("ch.usi.inf.l3.ascala.atomic"))
+        annList.find(p => p.symbol.tpe == atomicSymbol.tpe)
+      }
+      
+      def aliasAnnotation(annList: List[AnnotationInfo]) = {
+        val aliasSymbol = rootMirror.getClass(newTypeName("ch.usi.inf.l3.ascala.alias"))
+        annList.find(p => p.symbol.tpe == aliasSymbol.tpe)
+      }
+
+      /**
+       * Might need this if I decide to use java annotataions.
+       *
+       * TODO find a way to get the string value without using toString
+       * to make it nicer and get rid of the quotations.
+       */
+      def j_atomicSetName(anno: AnnotationInfo) =
+        anno.javaArgs.head._2.toString()
+
+      /**
+       *
+       */
+      def atomicSetName(anno: AnnotationInfo) = anno.args.head match {
+        case Apply(_, Literal(value) :: Nil) => value.stringValue
+        case _ => throw new Exception("Error getting atomic set name.")
+      }
+
+      /**
+       * TODO this looks horrible, beautify, consider getOrElse. I am also
+       * inconsistent whether to test this condition here or by the caller.
+       */
+      def ownerClassSymbol(t: Tree) = {
+        if (hasSymbol(t))
+          t.symbol.owner match {
+            case s: ClassSymbol => Some(s)
+            case s: MethodSymbol if (s.isClassConstructor) => Some(s.owner)
+            case _ => None
+          }
+        else None
+      }
+      
   /**
    * This is a hasSymbol function from another point of view, which is more
    * commonly used in this code, Having the NoSymbol symbol is interpreted
@@ -200,53 +253,6 @@ class AtomicScala(val global: Global) extends Plugin {
           case _ => None
         }
 
-      /**
-       * pre: the tree has an owner.
-       */
-      def ownerIsClass(t: Tree) = t.symbol.owner.isClass
-
-      def annotationList(t: Tree) =
-        if (hasSymbol(t)) Some(t.symbol.annotations) else None
-
-      def atomicAnnotation(annList: List[AnnotationInfo]) = {
-        /* Need to change to ch.usi.inf.l3.ascala.Atomic if I want to use
-         * java annotations 
-         */
-        val atomicSymbol =
-          rootMirror.getClass(newTypeName("ch.usi.inf.l3.ascala.atomic"))
-        annList.find(p => p.symbol.tpe == atomicSymbol.tpe)
-      }
-
-      /**
-       * Might need this if I decide to use java annotataions.
-       *
-       * TODO find a way to get the string value without using toString
-       * to make it nicer and get rid of the quotations.
-       */
-      def j_atomicSetName(anno: AnnotationInfo) =
-        anno.javaArgs.head._2.toString()
-
-      /**
-       *
-       */
-      def atomicSetName(anno: AnnotationInfo) = anno.args.head match {
-        case Apply(_, Literal(value) :: Nil) => value.stringValue
-        case _ => throw new Exception("Error getting atomic set name.")
-      }
-
-      /**
-       * TODO this looks horrible, beautify, consider getOrElse. I am also
-       * inconsistent whether to test this condition here or by the caller.
-       */
-      def ownerClassSymbol(t: Tree) = {
-        if (hasSymbol(t))
-          t.symbol.owner match {
-            case s: ClassSymbol => Some(s)
-            case s: MethodSymbol if (s.isClassConstructor) => Some(s.owner)
-            case _ => None
-          }
-        else None
-      }
 
       /**
        * This is Symbol to be compatible with what I get when I try to get
@@ -367,21 +373,15 @@ class AtomicScala(val global: Global) extends Plugin {
         // The field was not linked properly until this was added
         // this was inspired from:
         // Typers.scala line 1529
-        localTyper.namer.enterValueParams(
-            List(List(param)) map (_.map(_.duplicate)))
+        // It is crazy that now I comment those and it still works!
+        // talk about mind fuck.
+//        localTyper.namer.enterValueParams(
+//            List(List(param)) map (_.map(_.duplicate)))
 
         methDef.symbol.owner.info.decls.enter(lock_sym)
         methDef.symbol.owner.info.decls.enter(methDef.symbol)
 
         methDef
-      }
-
-      /**
-       * For each invocation of a modified constructor, add the needed parameter
-       */
-      def modifyNewStmtArgs(newStmt: Apply, args: List[Tree]) = {
-        val apply = treeCopy.Apply(newStmt, newStmt.fun, args)
-        localTyper.typed(apply)
       }
 
       override def transform(tree: Tree): Tree = {
@@ -395,15 +395,6 @@ class AtomicScala(val global: Global) extends Plugin {
               val newC = 
                 getNewConstructor(constructor, getLockSym(lockClass).tpe)
               super.transform(newC)
-
-          case newStmt @ Apply(Select(New(tpt), nme.CONSTRUCTOR), args) 
-          if (classSetsMap.contains(tpt.symbol))=>
-              val newArg = 
-                reify { ch.usi.inf.l3.as.plugin.OrderedLock(); }.tree
-              val newArgs = newArg :: args 
-              val newStmtM = 
-                localTyper.typed(Apply(Select(New(tpt), nme.CONSTRUCTOR), newArgs))
-              super.transform(newStmtM)
 
           case _ => super.transform(tree)
         }
@@ -527,6 +518,31 @@ class AtomicScala(val global: Global) extends Plugin {
       }
       
       override def transform(tree: Tree): Tree = {
+        def passNewLock(oldArgs: List[Tree], ownerClassTpt: Tree) = { 
+          /*
+           * TODO create a special phase for this work here.
+           * 
+           * Remember that the modified constructor type are available and so
+           * there is no need to change the associated symbol here, to prove
+           * that to yourself: println(newStmt.symbol.infosString)
+           * 
+           * Also, arguements do not have symbols. No need to create a symbol
+           * for the new argument. 
+           * 
+           * The newArg can be introduced like this too: 
+           * val lockModuleSym = getLockSym(lockClass).companionModule
+           * val newArg = Apply(
+           *   Select(Ident(lockModuleSym), newTermName("apply")), Nil)
+           */
+              
+                val newArg = reify { ch.usi.inf.l3.as.plugin.OrderedLock(); }.tree
+                val newArgs = newArg :: oldArgs
+                val newStmtM =
+                  localTyper.typed(
+                    Apply(Select(New(ownerClassTpt), nme.CONSTRUCTOR), newArgs))
+                newStmtM
+            }
+        
         tree match {
           case cl: ClassDef =>
             val newClass = localTyper.typed {
@@ -542,12 +558,42 @@ class AtomicScala(val global: Global) extends Plugin {
                     })))
             }.asInstanceOf[ClassDef]
             super.transform(newClass)
+            
+          case valNewRHS @ ValDef(mods, name, tpt,
+            Apply(Select(New(ntpt), nme.CONSTRUCTOR), args))
+            if (classSetsMap.contains(ntpt.symbol)) =>
+            
+            val annos = annotationList(valNewRHS)
+            val aliasA = if(annos != None) aliasAnnotation(annos.get) else None
+            aliasA match {
+              case Some(_) => 
+                val ownerClass = valNewRHS.symbol.enclClass
+                val lock_f = ownerClass.info.findMember(newTermName(as_lock), 0, 0, false)
+                
+                if (lock_f == NoSymbol || lock_f == null) 
+                  throw new Exception("Enclosing class does not have atomic sets")
+                val newArg = Select(This(ownerClass), newTermName(as_lock))
+                
+                
+                val newArgs = newArg :: args
+                    
+                val newRHS = localTyper.typed(
+                    Apply(Select(New(ntpt), nme.CONSTRUCTOR), newArgs))
+                val newvalDef  = treeCopy.ValDef(valNewRHS, mods, name, tpt, newRHS)
+                super.transform(localTyper.typed(newRHS))
+                
+              case None =>
+                val newRHS = passNewLock(args, ntpt)
+                val newvalDef  = treeCopy.ValDef(valNewRHS, mods, name, tpt, newRHS)
+                super.transform(localTyper.typed(newRHS))
+            }
+
           case _ => super.transform(tree)
         }
       }
 
       def methodTransform(tree: Tree) = {
-        //TODO think what other kinds of methods need not be synched
+        //TODO think what other kinds of methods need not be synced
         tree match {
           case md: DefDef if hasSymbol(md) &&
             md.symbol.isMethod &&

@@ -51,9 +51,13 @@ class MyList(val b: Int, val lck: OrderedLock) {
   def doSomething(a: Int) = {
       val b = 10 + a
       b + a
-      
       val mList = new MyList(10, OrderedLock())
+      @alias('b, 'a) val mNode = new Node(15)
   }
+}
+
+class Node(val value: Int) {
+  @atomic('b) var link = "whatever"
 }
 
 
