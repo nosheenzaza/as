@@ -5,4 +5,5 @@ object B extends App{
 	println(v.__as_lock)
 	println(v.b)
 	println(v.lck)
+	v.doSomething__w_lock(new Node(OrderedLock(), 5), 4)
 }

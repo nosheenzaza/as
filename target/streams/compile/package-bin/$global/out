@@ -6,6 +6,8 @@
 [0m[[0mdebug[0m] [0m	  /Users/nosheen/Google Drive/EclipseProjects/as/target/scala-2.10/classes/ch/usi/inf/l3/.DS_Store[0m
 [0m[[0mdebug[0m] [0m	ch/usi/inf/l3/as/plugin/AtomicScala$AddSync$AddSyncTransformer$$anonfun$2.class[0m
 [0m[[0mdebug[0m] [0m	  /Users/nosheen/Google Drive/EclipseProjects/as/target/scala-2.10/classes/ch/usi/inf/l3/as/plugin/AtomicScala$AddSync$AddSyncTransformer$$anonfun$2.class[0m
+[0m[[0mdebug[0m] [0m	ch/usi/inf/l3/as/plugin/AtomicScala$AddSync$AddSyncTransformer$$anonfun$paramLocks$1.class[0m
+[0m[[0mdebug[0m] [0m	  /Users/nosheen/Google Drive/EclipseProjects/as/target/scala-2.10/classes/ch/usi/inf/l3/as/plugin/AtomicScala$AddSync$AddSyncTransformer$$anonfun$paramLocks$1.class[0m
 [0m[[0mdebug[0m] [0m	ch/usi/inf/l3/as/plugin/AtomicScala$ClassSetsMapping$ClassSetsPhase$$anonfun$apply$1.class[0m
 [0m[[0mdebug[0m] [0m	  /Users/nosheen/Google Drive/EclipseProjects/as/target/scala-2.10/classes/ch/usi/inf/l3/as/plugin/AtomicScala$ClassSetsMapping$ClassSetsPhase$$anonfun$apply$1.class[0m
 [0m[[0mdebug[0m] [0m	ch/usi/inf/l3/as/plugin/AtomicScala$ClassSetsMapping$ClassSetsPhase$$anonfun$apply$2.class[0m
@@ -54,6 +56,8 @@
 [0m[[0mdebug[0m] [0m	  /Users/nosheen/Google Drive/EclipseProjects/as/target/scala-2.10/classes/ch/usi/inf/l3/as/plugin/AtomicScala$AddSync$AddSyncTransformer.class[0m
 [0m[[0mdebug[0m] [0m	ch/usi/inf/l3/ascala/package$internal.class[0m
 [0m[[0mdebug[0m] [0m	  /Users/nosheen/Google Drive/EclipseProjects/as/target/scala-2.10/classes/ch/usi/inf/l3/ascala/package$internal.class[0m
+[0m[[0mdebug[0m] [0m	ch/usi/inf/l3/as/plugin/AtomicScala$AddSync$AddSyncTransformer$$anonfun$8.class[0m
+[0m[[0mdebug[0m] [0m	  /Users/nosheen/Google Drive/EclipseProjects/as/target/scala-2.10/classes/ch/usi/inf/l3/as/plugin/AtomicScala$AddSync$AddSyncTransformer$$anonfun$8.class[0m
 [0m[[0mdebug[0m] [0m	ch/usi/inf/l3/as/plugin/AtomicScala$$anonfun$changeOwner$1.class[0m
 [0m[[0mdebug[0m] [0m	  /Users/nosheen/Google Drive/EclipseProjects/as/target/scala-2.10/classes/ch/usi/inf/l3/as/plugin/AtomicScala$$anonfun$changeOwner$1.class[0m
 [0m[[0mdebug[0m] [0m	ch/usi/inf/l3/as/.DS_Store[0m
@@ -80,6 +84,10 @@
 [0m[[0mdebug[0m] [0m	  /Users/nosheen/Google Drive/EclipseProjects/as/target/scala-2.10/classes/.DS_Store[0m
 [0m[[0mdebug[0m] [0m	ch/usi/inf/l3/as/plugin/OrderedLock.class[0m
 [0m[[0mdebug[0m] [0m	  /Users/nosheen/Google Drive/EclipseProjects/as/target/scala-2.10/classes/ch/usi/inf/l3/as/plugin/OrderedLock.class[0m
+[0m[[0mdebug[0m] [0m	ch/usi/inf/l3/as/plugin/AtomicScala$$anonfun$unitforAnnotation$1.class[0m
+[0m[[0mdebug[0m] [0m	  /Users/nosheen/Google Drive/EclipseProjects/as/target/scala-2.10/classes/ch/usi/inf/l3/as/plugin/AtomicScala$$anonfun$unitforAnnotation$1.class[0m
+[0m[[0mdebug[0m] [0m	ch/usi/inf/l3/as/plugin/AtomicScala$AddSync$AddSyncTransformer$$anonfun$paramsWithUnitForSyms$1.class[0m
+[0m[[0mdebug[0m] [0m	  /Users/nosheen/Google Drive/EclipseProjects/as/target/scala-2.10/classes/ch/usi/inf/l3/as/plugin/AtomicScala$AddSync$AddSyncTransformer$$anonfun$paramsWithUnitForSyms$1.class[0m
 [0m[[0mdebug[0m] [0m	ch/usi/inf/l3/as/plugin/AtomicScala$AddSync$.class[0m
 [0m[[0mdebug[0m] [0m	  /Users/nosheen/Google Drive/EclipseProjects/as/target/scala-2.10/classes/ch/usi/inf/l3/as/plugin/AtomicScala$AddSync$.class[0m
 [0m[[0mdebug[0m] [0m	ch/usi/inf/l3/as/plugin/AtomicScala$AddSync$AddSyncTransformer$$anonfun$4.class[0m
