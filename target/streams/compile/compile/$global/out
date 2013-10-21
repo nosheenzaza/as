@@ -14,7 +14,7 @@
 [0m[[0mdebug[0m] [0m	external source: Set()[0m
 [0m[[0mdebug[0m] [0mAll initially invalidated sources: Set(/Users/nosheen/Google Drive/EclipseProjects/as/src/main/scala/ch/usi/inf/l3/as/plugin/AtomicScala.scala)[0m
 [0m[[0minfo[0m] [0mCompiling 1 Scala source to /Users/nosheen/Google Drive/EclipseProjects/as/target/scala-2.10/classes...[0m
-[0m[[0mdebug[0m] [0mRunning cached compiler 3e5a9124, interfacing (CompilerInterface) with Scala compiler version 2.10.2[0m
+[0m[[0mdebug[0m] [0mRunning cached compiler 90a1a9a, interfacing (CompilerInterface) with Scala compiler version 2.10.2[0m
 [0m[[0mdebug[0m] [0mCalling Scala compiler with arguments  (CompilerInterface):[0m
 [0m[[0mdebug[0m] [0m	-d[0m
 [0m[[0mdebug[0m] [0m	/Users/nosheen/Google Drive/EclipseProjects/as/target/scala-2.10/classes[0m
@@ -24,7 +24,7 @@
 [0m[[0mdebug[0m] [0m	/Users/nosheen/Google Drive/EclipseProjects/as/target/scala-2.10/classes:/Users/nosheen/.sbt/boot/scala-2.10.2/lib/scala-compiler.jar:/Users/nosheen/.ivy2/cache/org.scala-lang/scala-reflect/jars/scala-reflect-2.10.2.jar[0m
 [0m[[33mwarn[0m] [0mthere were 3 deprecation warning(s); re-run with -deprecation for details[0m
 [0m[[33mwarn[0m] [0mone warning found[0m
-[0m[[0mdebug[0m] [0mScala compilation took 8.709314 s[0m
+[0m[[0mdebug[0m] [0mScala compilation took 8.152042 s[0m
 [0m[[0mdebug[0m] [0mStep 2 changed sources and immdediate dependencies:[0m
 [0m[[0mdebug[0m] [0m	Set()[0m
 [0m[[0mdebug[0m] [0mNon-trivial strongly connected components: [0m

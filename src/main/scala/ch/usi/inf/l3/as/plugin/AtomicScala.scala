@@ -32,7 +32,10 @@ import scala.reflect.internal.Flags._
  * adding another phase that catches the @atomic annotation before the
  * compiler disposes it for good, this should be done after the parser
  * phase.
- * 2- Forgot to map classes to atomic sets in their parents. Do this at
+ * 3- Make sure we do not obtain a lock twice through acquiring an aliased lock
+ * of a parameter that is an alias to a lock in the class itself.
+ * also finish the work needed to avoid dereferencing an empty parameter for a lock.
+ * 
  * some point.
  * 4- Support module classes and traits (later)
  * 5- I am only considering one atomic set per class at the moment (later)
@@ -53,6 +56,7 @@ class AtomicScala(val global: Global) extends Plugin {
   val components = List[PluginComponent]( 
     CheckAnnotationTargets,
     ClassSetsMapping,
+    ClassAncestorsSetsMapping,
     AddLockFields, 
     ModifyNewStmts,
     AddSync)
@@ -138,7 +142,7 @@ class AtomicScala(val global: Global) extends Plugin {
     anno.javaArgs.head._2.toString()
 
   /**
-   * Returnds the name of the atomic set.
+   * Returns the name of the atomic set.
    */
   def atomicSetName(anno: AnnotationInfo) = anno.args.head match {
     case Apply(_, Literal(value) :: Nil) => value.stringValue
@@ -151,6 +155,26 @@ class AtomicScala(val global: Global) extends Plugin {
    * as not having a Symbol as well.
    */
   def hasSymbol(t: Tree) = t.symbol != null && t.symbol != NoSymbol
+  
+  /**
+   * Returns true if any ancestor of a class defines an atomic set.
+   * @param list of parent symbols
+   */
+  def hasLockFieldInParents(sl: List[Symbol]): Boolean = {
+    val lockField = sl.foldLeft(List[Symbol]())((c,r) => {
+      val lckSym = r.info.findMember(newTermName(as_lock), 0, 0, false)
+      if(lckSym == NoSymbol || lckSym == null) c
+      else if (lckSym.isOverloaded)
+        throw new Exception("Duplicate lock field in one class!")
+      else lckSym :: c
+    })
+    
+    if (lockField.size == 1) true
+    else if (lockField.size == 0) return false
+    
+    //TODO when I support a list of locks, this message should change.
+    else throw new Exception("Duplicate lock fields in parents!")
+  }
 
   /**
    * TODO this looks horrible, beautify, consider getOrElse. I am also
@@ -244,6 +268,7 @@ class AtomicScala(val global: Global) extends Plugin {
     /* This is the earliest stage possible, each class will have a symbol after
      * this stage
      */
+    // so my stuff vanish after superaccessors
     val runsAfter = List[String]("typer");
     override val runsRightAfter = Some("typer")
 
@@ -282,14 +307,6 @@ class AtomicScala(val global: Global) extends Plugin {
 
       override def name = ClassSetsMapping.this.phaseName
 
-      /**
-       * If the passed tree is a ValDef, return it as such.
-       */
-      def valTree(t: Tree) =
-        t match {
-          case ft @ ValDef(_, _, _, _) => Some(ft)
-          case _ => None
-        }
 
       /**
        * This is Symbol to be compatible with what I get when I try to get
@@ -311,29 +328,110 @@ class AtomicScala(val global: Global) extends Plugin {
        *  in a class, and has an annotation @atomic(set_name), add to the
        *  class-sets map a mapping of the owner class and the set name.
        */
-      def addMapping(t: Tree) {
-        /*
-        * Not all these need to be calculated beforehand, optimize if needed.
-        */
-        val vt = valTree(t)
-        val oc = ownerClassSymbol(t)
-        val annos = annotationList(t)
-
-        /*
-        * TODO there are neater ways to encode this logic, explore them
-        */
-        val atomicAnno =
-          if (annos != None) getAnnotationSymbol(annos.get, atomic_anno) else None
-        val asName =
-          if (atomicAnno != None) Some(atomicSetName(atomicAnno.get)) else None
-
-        if (vt != None && vt.get.symbol.isVar &&
-          hasSymbol(vt.get) &&
-          oc != None && asName != None) {
-          //          println("adding "+ oc.get + " " + asName.get)
-          addClassSetMapping(oc.get, asName.get)
+      def addMapping(t: Tree) {  
+        t match {
+          case vt: ValDef 
+          if (vt.symbol.isVar &&
+              ownerClassSymbol(t) != None &&
+              annotationList(t) != None &&
+              getAnnotationSymbol(annotationList(t).get, atomic_anno) != None 
+              )
+          => addClassSetMapping(
+              ownerClassSymbol(t).get,
+              atomicSetName(
+                  getAnnotationSymbol(annotationList(t).get, atomic_anno).get))
+          case _ => None
         }
+      }
 
+      /**
+       * Initiate the work here.
+       */
+      def apply(unit: CompilationUnit) {
+        unit.body.foreach(addMapping)
+        classSetsMap.foreach(println)
+      }
+    }
+  }
+  
+/************ Phase 3: add mapping of class to ancestors' sets ****************/
+  /**
+   * Find which classes have atomic sets, the next phase will add lock fields
+   * based on this information.
+   */
+  private object ClassAncestorsSetsMapping extends PluginComponent {
+
+    val global: AtomicScala.this.global.type = AtomicScala.this.global
+
+    val runsAfter = List[String]("class-sets-mapping");
+    override val runsRightAfter = Some("class-sets-mapping")
+
+    val phaseName = "class-ancestor-sets-mapping"
+    def newPhase(_prev: Phase) = new ClassSetsPhase(_prev)
+
+    class ClassSetsPhase(prev: Phase) extends StdPhase(prev) {
+
+      println("Creating class -> ancestors' atomic sets mappings...")
+
+      override def name = ClassAncestorsSetsMapping.this.phaseName
+
+
+      /**
+       * This is Symbol to be compatible with what I get when I try to get
+       * the class symbol while transformation. In practice this should always
+       * be a class Symbol. The purpose is to relate classes to their atomic
+       * sets.
+       */
+      def addClassSetMapping(cs: Symbol, s: String) {
+        if (classSetsMap.contains(cs)) classSetsMap(cs) = s :: classSetsMap(cs)
+        else classSetsMap(cs) = s :: Nil
+      }
+
+      /**
+       *  TODO I think I am mixing type checking with other things here,
+       *  thus extra checks to see if the target is valid, this is not needed
+       *  will move them to the first type-checking phase.
+       *
+       *  If the tree is a ValDef tree which is a var (:|) and is contained
+       *  in a class, and has an annotation @atomic(set_name), add to the
+       *  class-sets map a mapping of the owner class and the set name.
+       */
+      
+      
+      /**
+       * class A {
+       * lock_1 // these are not inserted now, I have a map of class names to
+       * atomic sets, whcih is filled in the previous stage, so I have no problem
+       * 
+       * 
+       * I know that, but during the parent check, you should first check the first parent
+       * here A,
+       * 
+       * I think yes, we talk about this online :D
+       * } //visited last (in your new phase), and has
+       * 
+       *  class B extends A {
+       *  	//visited before last
+       *    lock_2
+       *   } 
+       *   
+       *   
+       *   class C extends B {
+       *   	//visited first, sees lock_2 but not lock_1
+       *   }
+       */
+      def addMapping(t: Tree) {
+        t match {
+          case cl: ClassDef if (!cl.symbol.parentSymbols.isEmpty) =>
+            val parentSyms = cl.symbol.parentSymbols
+            val parentSets = parentSyms.foldLeft(List[String]())((c, r) => {
+              val setsOfClass = classSetsMap.get(r)
+              if (setsOfClass != None) c ++ setsOfClass.get else c
+            })
+            if (!parentSets.isEmpty)
+              parentSets.foreach(x => addClassSetMapping(cl.symbol, x))
+          case _ => ()
+        }
       }
 
       /**
@@ -346,10 +444,10 @@ class AtomicScala(val global: Global) extends Plugin {
     }
   }
 
-/************************ Phase 3: add lock fields ****************************/
+/************************ Phase 4: add lock fields ****************************/
   /**
    * Creates lock objects that correspond to each atomic set declaration in
-   * a class. Uses information collected during phase.
+   * a class. Uses information collected during the previous phase.
    */
   private object AddLockFields extends PluginComponent
     with Transform
@@ -358,8 +456,8 @@ class AtomicScala(val global: Global) extends Plugin {
 
     val global: GlobalType = AtomicScala.this.global
 
-    val runsAfter = List[String]("class-sets-mapping");
-    override val runsRightAfter = Some("class-sets-mapping")
+    val runsAfter = List[String]("class-ancestor-sets-mapping");
+    override val runsRightAfter = Some("class-ancestor-sets-mapping")
     val phaseName = "add-lock-fields"
 
     def newTransformer(unit: CompilationUnit) = new AddLocksTransformer(unit)
@@ -372,7 +470,7 @@ class AtomicScala(val global: Global) extends Plugin {
       /**
        * Returns a copy of the argument constructor plus the lock param.
        */
-      def getNewConstructor(old_construcor: DefDef, lockType: Type) = {
+      def getNewConstructor(old_construtcor: DefDef, lockType: Type) = {
         // The field was not linked properly until this was added
         // this was inspired from:
         // Typers.scala line 1529
@@ -383,30 +481,44 @@ class AtomicScala(val global: Global) extends Plugin {
         //            List(List(param)) map (_.map(_.duplicate)))
         // Notice how we ask the class Symbol to generate the new param 
         // symbol, NOT the method symbol!
-        val lock_sym =
-          old_construcor.symbol.owner.newValueParameter(
-            newTermName(as_lock), old_construcor.symbol.pos.focus)
+        val parentClasses = old_construtcor.symbol.owner.ancestors;
+//        println("CLASS " + old_construtcor.symbol.owner)
+//        println("PARENTS: " + parentClasses)
+        
+        val hasLocksInSupers = hasLockFieldInParents(parentClasses)
+
+        // I think the flags are not as important as I though, most 
+        // important is to create the ValDef using the cass symbol
+        // but will need to check that more.
+        val lock_sym = if (hasLocksInSupers) {println("HAS A SUPER " + old_construtcor.symbol)
+          old_construtcor.symbol.newValueParameter(
+            newTermName(as_lock), old_construtcor.symbol.pos.focus)
+            .setInfo(lockType)
+            .setFlag(PARAMACCESSOR | PARAM | SYNTHETIC)
+        }
+        else
+          old_construtcor.symbol.owner.newValueParameter(
+            newTermName(as_lock), old_construtcor.symbol.pos.focus)
             .setInfo(lockType)
             .setFlag(PARAM | PARAMACCESSOR | SYNTHETIC)
+            
+        val param = localTyper.typed(ValDef(lock_sym).setType(lockType)).asInstanceOf[ValDef]
+        val newparamss = param :: old_construtcor.vparamss.head
+        val pList = newparamss :: old_construtcor.vparamss.drop(1)
 
-        val param = ValDef(lock_sym).setType(lockType)
-        val newparamss = param :: old_construcor.vparamss.head
-        val pList = newparamss :: old_construcor.vparamss.drop(1)
-
-        val methDef = treeCopy.DefDef(
-          old_construcor, old_construcor.mods, old_construcor.name,
-          old_construcor.tparams,
-          pList, old_construcor.tpt, old_construcor.rhs)
-
-        methDef.symbol.owner.info.decls.unlink(methDef.symbol)
+        val methDef = localTyper.typed(DefDef(old_construtcor.mods, old_construtcor.name, 
+            old_construtcor.tparams, pList, old_construtcor.tpt.duplicate, 
+            old_construtcor.rhs).setSymbol(old_construtcor.symbol))
 
         val methodInfo = methDef.symbol.info.asInstanceOf[MethodType]
 
         methDef.symbol.updateInfo(MethodType(
           lock_sym :: methodInfo.params, methodInfo.resultType))
-
-        methDef.symbol.owner.info.decls.enter(lock_sym)
-        methDef.symbol.owner.info.decls.enter(methDef.symbol)
+          
+        // it is annoying that trees that are not linked correctly to owner
+        // symbols still generate bytecode, that is not usable.
+        // submit example with the proxy issue to Amanj
+        if(!hasLocksInSupers) methDef.symbol.owner.info.decls.enter(lock_sym)
 
         methDef
       }
@@ -429,11 +541,11 @@ class AtomicScala(val global: Global) extends Plugin {
   }
   
   
-/********************** Phase 4: modify 'new' statements **********************/
+/********************** Phase 5: modify 'new' statements **********************/
   /**
    * After adding the new constructor parameter, we need to update all 
    * constructor calls to include the new lock argument, and this is what we
-   * do here.
+   * do here. We also update 'super' calls here. 
    */
   private object ModifyNewStmts extends PluginComponent
     with Transform
@@ -482,6 +594,12 @@ class AtomicScala(val global: Global) extends Plugin {
 
       override def transform(tree: Tree): Tree = {
         tree match {
+//          case s @DefDef(_,_,_,_,_,_) =>
+//            println("METHOD HERE in " + s.symbol.enclClass)
+//            println(s)
+//            println(showRaw(s))
+//            super.transform(tree)
+            
           case valNewRHS @ ValDef(mods, name, tpt,
             Apply(Select(New(ntpt), nme.CONSTRUCTOR), args)) 
             if (classSetsMap.contains(ntpt.symbol)) =>
@@ -508,13 +626,54 @@ class AtomicScala(val global: Global) extends Plugin {
                 val newRHS = localTyper.typed(
                   Apply(Select(New(ntpt), nme.CONSTRUCTOR), newArgs))
                 val newvalDef = treeCopy.ValDef(valNewRHS, mods, name, tpt, newRHS)
-                super.transform(localTyper.typed(newRHS))
+                
+                super.transform(localTyper.typed(newvalDef))
 
               case None =>
                 val newRHS = passNewLock(args, ntpt)
                 val newvalDef = treeCopy.ValDef(valNewRHS, mods, name, tpt, newRHS)
-                super.transform(localTyper.typed(newRHS))
+                super.transform(localTyper.typed(newvalDef))
             }
+
+          case sc @ Apply(fn @(Select(spr @Super(ths @This(klass), m), nme.CONSTRUCTOR)), args) 
+          // TODO this is fragile here without nullness checks, so do it later.
+          if (classSetsMap.contains(spr.symbol.enclClass.parentSymbols.head)) =>
+            //TODO I am not sure of it is fine taking the param of primary 
+            // constructor here, or i need to select the exact surrounding 
+            // consructor
+                val lockValSym = ths.symbol.primaryConstructor.
+                  asInstanceOf[MethodSymbol].paramss.head.head
+                
+                val newArg = Ident(lockValSym) 
+                val newArgs =  newArg :: args
+                
+                val newSelect = (Select(Super(This(klass), m), nme.CONSTRUCTOR))
+               
+                val newApply = localTyper.typed(Apply(newSelect, newArgs).setSymbol(sc.symbol))
+
+                super.transform(newApply)
+                 
+             case cnst @DefDef(_, nme.CONSTRUCTOR, _, _, _, Block( lst @List( 
+                 sc @Apply( 
+                     fn @Select( 
+                         ths @This(klass), nme.CONSTRUCTOR), args), _*), c)) 
+//           TODO this is fragile here without nullness checks, so do it later.
+          if (classSetsMap.contains(sc.symbol.enclClass.parentSymbols.head)) =>
+                val lockValSym = cnst.vparamss.head.head;
+                val newArg = Ident(lockValSym.symbol) //args.drop(1).head 
+                val newArgs =  newArg :: args
+                
+                val newSelect = (Select(This(klass), nme.CONSTRUCTOR))
+               
+                val newApply = localTyper.typed(Apply(newSelect, newArgs).setSymbol(sc.symbol))
+                
+                val newBlock = Block(newApply::lst.drop(1), c)
+                
+                val newCnst = treeCopy.DefDef(
+                    cnst, cnst.mods, cnst.name, cnst.tparams, 
+                    cnst.vparamss, cnst.tpt, newBlock)
+                    
+                super.transform(newCnst)
           case _ => super.transform(tree)
         }
       }
@@ -524,7 +683,7 @@ class AtomicScala(val global: Global) extends Plugin {
   
   
 
-/*********************** Phase 5: add synchronization *************************/
+/*********************** Phase 6: add synchronization *************************/
   /**
    * add synchronization blocks to each top-level public method in a class
    * that has one or more atomic sets.
@@ -607,6 +766,16 @@ class AtomicScala(val global: Global) extends Plugin {
               List(Literal(Constant(null))))))))
       }
       
+      def paramLocks(pListSym: Symbol) = {
+        ValDef(Modifiers(), newTermName("__param_locks"), TypeTree(),
+          Apply(Select(Ident(pListSym),
+            newTermName("map")), List(Function(
+            List(ValDef(Modifiers(PARAM), newTermName("x"), TypeTree(), 
+                EmptyTree)),
+            Apply(Select(Ident(newTermName("x")), newTermName(as_lock)),
+              List(Literal(Constant(null))))))))
+      }
+      
       def paramLocks(pl: List[Symbol]) = {
         val p_ufor =  paramsWithUnitForSyms(pl)
         p_ufor.map(x => Select(Ident(x), newTermName(as_lock)))
@@ -686,7 +855,7 @@ class AtomicScala(val global: Global) extends Plugin {
           composeSync(locksList_sym, all_locks.size, 
               mtpt.duplicate , mbody.duplicate)
         
-        val blockToInsert = Block(locksList, nestedSync)
+        val blockToInsert = Block(paramList, locksList, nestedSync)
         blockToInsert
       }
 
@@ -707,6 +876,7 @@ class AtomicScala(val global: Global) extends Plugin {
                     })))
             }.asInstanceOf[ClassDef]
             super.transform(newClass)
+                
           case _ => super.transform(tree)
         }
       }

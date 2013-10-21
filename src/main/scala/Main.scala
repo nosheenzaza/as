@@ -58,6 +58,10 @@ class MyList(val b: Int, val lck: OrderedLock) {
   }
 }
 
+class MyOrderedList(b:Int, lck2: OrderedLock) extends MyList(b, lck2){
+  def this(s1: String, b: Int, lck3: OrderedLock) = {this(b, lck3); println("test") }
+}
+
 class Node(val value: Int) {
   @atomic('b) var link = "whatever"
 }
